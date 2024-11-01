@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+  <title>Final Year Project</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "@google/generative-ai": "https://esm.run/@google/generative-ai"
+      }
+    }
+  </script>
+  <script type="module">
+    import { GoogleGenerativeAI } from "@google/generative-ai";
+    const API_KEY = "";
+    const genAI = new GoogleGenerativeAI(API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    async function summarizeContent(pdfContent, index) {
+      const criteria = `Summarize the PDF content in clear, concise language as if creating a course outline. Each summary should cover the key concepts, methodologies, and findings from the content. At the end of each course section, include a relevant question based on the summarized content to encourage critical thinking and reinforce understanding. Follow this format:
+
+      Course Title: Chapter ${index + 1}
+      Summary: [Brief overview of the key points, methodologies, and findings]
+      Questions: [List 1-3 questions that relate directly to the content of the summary, designed to test understanding and application of the material]`;
+
+      const prompt = `${criteria}\n\n${pdfContent}`;
+      try {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = await response.text();
+        displayResult(text);
+      } catch (error) {
+        console.error("Error generating content:", error);
+      }
+    }
+
+    function displayResult(text) {
+      const resultContainer = document.getElementById("result");
+      const formattedText = text
+        .replace(/## (.+)/g, '<h1>$1</h1>')
+        .replace(/### (.+)/g, '<h3>$1</h3>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .split('\n').map(line => `<p>${line.trim()}</p>`).join('');
+      resultContainer.innerHTML += formattedText; // Append results instead of replacing
+      resultContainer.style.display = "block";
+    }
+
+    window.downloadPDF = function() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  const resultContainer = document.getElementById("result");
+
+  // Get the content and replace HTML tags
+  const content = resultContainer.innerHTML.replace(/<[^>]+>/g, ' ').split('\n').map(line => line.trim());
+
+  // Check if content is empty
+  if (content.every(line => line === '')) {
+    alert('No content to download. Please summarize the PDF first.');
+    return; // Stop execution if there's no content
+  }
+
+  // Add title page
+  doc.setFontSize(22);
+  doc.text('Course Summary', 20, 30);
+  doc.setFontSize(12);
+  doc.text('A comprehensive overview of the summarized PDF contents.', 20, 50);
+  doc.addPage(); // Add a new page for the content
+
+  // Add content
+  doc.setFontSize(12);
+  content.forEach((line, index) => {
+    if (line !== '') {
+      // Adding sections
+      if (line.startsWith('Course Title:')) {
+        doc.setFontSize(16); // Section header
+        doc.text(line, 10, 20 + (index * 10));
+        doc.setFontSize(12); // Reset font size for next lines
+      } else if (line.startsWith('Summary:') || line.startsWith('Questions:')) {
+        doc.setFontSize(14); // Subsection header
+        doc.text(line, 10, 20 + (index * 10));
+        doc.setFontSize(12); // Reset font size for next lines
+      } else {
+        doc.text(line, 10, 20 + (index * 10));
+      }
+    }
+  });
+
+  // Add page number
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(10);
+    doc.text(`Page ${i} of ${totalPages}`, 180, 290, null, null, 'right');
+  }
+
+  // Save the PDF
+  doc.save('course_summary.pdf');
+}
+
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const storageFileInput = document.getElementById('StorageFile');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';
+      storageFileInput.addEventListener('change', function () {
+        const files = storageFileInput.files;
+        if (files.length > 0) {
+          let pdfPromises = [];
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const fileReader = new FileReader();
+            fileReader.onload = function () {
+              const typedarray = new Uint8Array(this.result);
+              pdfjsLib.getDocument(typedarray).promise.then(function (pdf) {
+                let allText = '';
+                let pagePromises = [];
+                for (let j = 1; j <= pdf.numPages; j++) {
+                  pagePromises.push(
+                    pdf.getPage(j).then(function (page) {
+                      return page.getTextContent().then(function (textContent) {
+                        let text = textContent.items.map(item => item.str).join(' ');
+                        allText += text + ' ';
+                      });
+                    })
+                  );
+                }
+                Promise.all(pagePromises).then(function () {
+                  if (allText.trim() === '') {
+                    alert('Please upload a selectable PDF.');
+                  } else {
+                    summarizeContent(allText, i); // Pass index for chapter number
+                  }
+                });
+              }).catch(function (error) {
+                console.error('Error loading PDF: ', error);
+              });
+            };
+            fileReader.readAsArrayBuffer(file);
+          }
+        } else {
+          console.error('No file selected.');
+        }
+      });
+    });
+  </script>
+  <style>
+    #result {
+      overflow-x: hidden;
+      white-space: normal;
+      word-wrap: break-word;
+      max-width: 100%;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-top: 10px;
+      display: block;
+    }
+
+    #result p {
+      margin: 0;
+      text-indent: 1em;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="g_id_onload" data-client_id="CLIENT_ID" data-callback="handleCredentialResponse"></div>
+  <div class="g_id_signin" data-type="standard"></div>
+  <input type="file" id="StorageFile" accept="application/pdf" multiple>
+  <h2>Result:</h2>
+  <div id="result"></div>
+  <button onclick="downloadPDF()">Download PDF</button> <!-- Button to download PDF -->
+</body>
+
+</html>
